@@ -1,0 +1,128 @@
+service: user-auth
+
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs16.x
+  region: ap-south-1
+  environment:
+    USER_POOL_ID:
+      Ref: UserPool
+    USER_POOL_CLIENT_ID:
+      Ref: UserPoolClient
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - cognito-idp:AdminCreateUser
+        - cognito-idp:AdminSetUserPassword
+        - cognito-idp:AdminInitiateAuth
+        - cognito-idp:AdminAddUserToGroup
+        - cognito-idp:AdminListGroupsForUser
+      Resource: !GetAtt UserPool.Arn
+
+resources:
+  Resources:
+    UserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: ${self:service}-user-pool-${sls:stage}
+        UsernameAttributes:
+          - email
+        AutoVerifiedAttributes:
+          - email
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 6
+        Schema:
+          - AttributeDataType: String
+            Name: email
+            Required: true
+          - AttributeDataType: String
+            Name: name
+            Required: true
+
+    UserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: ${self:service}-user-pool-client-${sls:stage}
+        GenerateSecret: false
+        UserPoolId:
+          Ref: UserPool
+        ExplicitAuthFlows:
+          - "ADMIN_NO_SRP_AUTH"
+
+    AdminUserPoolGroup:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: admin
+        UserPoolId:
+          Ref: UserPool
+
+    ManagerUserPoolGroup:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: manager
+        UserPoolId:
+          Ref: UserPool
+
+    EmployeeUserPoolGroup:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: employee
+        UserPoolId:
+          Ref: UserPool
+
+    CognitoAuthorizer:
+      Type: AWS::ApiGateway::Authorizer
+      Properties:
+        Name: CognitoAuthorizer
+        IdentitySource: method.request.header.Authorization
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        Type: COGNITO_USER_POOLS
+        ProviderARNs:
+          - !GetAtt UserPool.Arn
+
+functions:
+  register:
+    handler: register.handler
+    events:
+      - http:
+          path: register
+          method: post
+          cors: true
+  changePassword:
+    handler: changePassword.handler
+    events:
+      - http:
+          path: changePassword
+          method: post
+          cors: true
+  login:
+    handler: login.handler
+    events:
+      - http:
+          path: login
+          method: post
+          cors: true
+
+  addUserToGroup:
+    handler: addUserToGroup.handler
+    events:
+      - http:
+          path: addUserToGroup
+          method: post
+          cors: true
+
+  getDataWithToken:
+    handler: getDataWithToken.handler
+    events:
+      - http:
+          path: getDataWithToken
+          method: post
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: CognitoAuthorizer
